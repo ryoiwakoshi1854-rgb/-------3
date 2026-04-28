@@ -1,0 +1,165 @@
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #f0f2f5;
+    display: flex;
+    justify-content: center;
+    padding: 30px;
+    margin: 0;
+}
+
+/* ダッシュボード全体を広くする */
+.dashboard-container {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    width: 1000px; /* 時間割が入るように幅を拡張 */
+    max-width: 100%;
+}
+
+h2 {
+    color: #8c1515; /* 立命館カラー風 */
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+.sub-title {
+    margin-top: 40px;
+    color: #555;
+    font-size: 1.1em;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 5px;
+}
+
+/* 検索エリア */
+.input-area {
+    display: flex;
+    margin-bottom: 20px;
+    width: 500px;
+}
+input {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px 0 0 8px;
+    outline: none;
+}
+.add-btn {
+    padding: 10px 20px;
+    border: none;
+    background: #8c1515;
+    color: white;
+    font-weight: bold;
+    border-radius: 0 8px 8px 0;
+    cursor: pointer;
+}
+.add-btn:hover { background: #6a0f0f; }
+
+/* 時間割テーブル */
+.timetable {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-top: 20px;
+}
+.timetable th {
+    background: #f8f9fa;
+    color: #333;
+    padding: 12px;
+    border: 1px solid #ddd;
+    font-weight: normal;
+}
+.timetable td {
+    border: 1px solid #ddd;
+    vertical-align: top;
+    padding: 5px;
+    height: 120px; /* セルの高さ */
+    background: #fafafa;
+}
+.period-col {
+    width: 40px;
+    text-align: center;
+    font-weight: bold;
+    background: #f8f9fa !important;
+    vertical-align: middle !important;
+}
+
+/* カードのデザイン（マス目に入るように調整） */
+.course-card {
+    background: white;
+    border-top: 4px solid #8c1515;
+    padding: 8px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    position: relative;
+    margin-bottom: 5px;
+    font-size: 0.85em;
+    word-wrap: break-word;
+}
+.course-title {
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 5px;
+    padding-right: 15px; /* 削除ボタンのスペース */
+}
+.info {
+    color: #666;
+    font-size: 0.9em;
+    margin-bottom: 2px;
+}
+
+/* 削除ボタン */
+.delete-btn {
+    position: absolute;
+    top: 2px;
+    right: 5px;
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0;
+}
+.delete-btn:hover { color: #ff4d4d; }
+
+/* リンク */
+.syllabus-link {
+    display: inline-block;
+    margin-top: 5px;
+    font-size: 0.8em;
+    color: #0066cc;
+    text-decoration: none;
+    background: #eef6ff;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.syllabus-link:hover { text-decoration: underline; }
+
+/* その他の授業エリア */
+.unassigned-area {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.unassigned-area .course-card {
+    width: 200px;
+}
+.loading {
+    color: #8c1515;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+/* style.css の最後に追加 */
+@media (max-width: 600px) {
+    .dashboard-container {
+        width: 95%;
+        padding: 10px;
+    }
+    .timetable {
+        display: block;
+        overflow-x: auto; /* 横スクロールできるようにする */
+    }
+    .input-area {
+        width: 100%;
+    }
+}
