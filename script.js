@@ -38,7 +38,7 @@ async function searchAndAdd() {
     queryInput.value = '';
 
     try {
-        const response = await fetch('http://localhost:8000/scrape-syllabus', {
+        const response = await fetch('https://manaba.onrender.com', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: query })
