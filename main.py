@@ -27,16 +27,15 @@ def scrape_syllabus(request: SyllabusRequest):
             context = browser.new_context()
             page = context.new_page()
             
-            # 画像やデザインなど、重いデータの通信はブロック（これはそのまま残します）
+            # 🎨 画像やデザインの読み込みをブロック（スピードアップ用）
             page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
 
             page.set_default_timeout(30000)
 
             print(f"\n[STEP 1] アクセス中...")
-            # 🌟 変更点1：ここは安全を優先し、サイトが落ち着くまで待つように戻します
             page.goto(root_url, wait_until="networkidle")
             
-            # 🌟 変更点2：「一瞬消える部品」にも対応できる Locator（ロケーター）という書き方に変更
+            # 1. 検索窓に入力
             search_box = page.locator('input.slds-input')
             search_box.wait_for(state="visible")
             search_box.fill(request.query)
@@ -48,28 +47,37 @@ def scrape_syllabus(request: SyllabusRequest):
 
             # 3. リンクスキャン
             print("[STEP 2] 検索結果をスキャン中...")
-            page.wait_for_selector('a[href*="/syllabus/s/sfsites/c/"]', state="visible", timeout=10000)
             
             target_link = None
             course_name_memory = "授業名取得失敗" 
             detail_url_memory = "URL取得失敗"
 
-            links = page.get_by_role("link").all()
-            for link in links:
-                text = link.inner_text().strip()
-                if request.query in text:
-                    target_link = link
-                    course_name_memory = text 
-                    raw_href = link.get_attribute("href")
-                    if raw_href:
-                        if raw_href.startswith("http"):
-                            detail_url_memory = raw_href
-                        else:
-                            detail_url_memory = f"https://syllabus.ritsumei.ac.jp{raw_href}"
+            # 🌟 変更点：厳しい条件での待機をやめ、「目的のリンクが出るまで0.5秒おきに最大30回（15秒）探す」ループに変更
+            for _ in range(30):
+                links = page.get_by_role("link").all()
+                for link in links:
+                    text = link.inner_text().strip()
+                    # もしリンクの中に検索キーワードが含まれていたら確保！
+                    if request.query in text:
+                        target_link = link
+                        course_name_memory = text 
+                        raw_href = link.get_attribute("href")
+                        if raw_href:
+                            if raw_href.startswith("http"):
+                                detail_url_memory = raw_href
+                            else:
+                                detail_url_memory = f"https://syllabus.ritsumei.ac.jp{raw_href}"
+                        break
+                
+                # 見つかったらループを抜け出して次のステップへ
+                if target_link:
                     break
+                
+                # まだ見つからなければ、0.5秒だけ待ってからもう一度画面を探す
+                page.wait_for_timeout(500)
 
             if not target_link:
-                raise Exception("検索結果に該当する授業が見つかりませんでした。")
+                raise Exception("検索結果に該当する授業が見つかりませんでした。（15秒タイムアウト）")
 
             # 4. 詳細ページへ移動
             print(f"[STEP 3] {course_name_memory} の詳細へ移動中...")
