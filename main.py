@@ -6,11 +6,10 @@ import time
 
 app = FastAPI()
 
-# CORS設定（ローカルPCのブラウザからのアクセスを許可する設定）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False, # allow_origins="*" の場合は False にする必要があります
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -24,13 +23,19 @@ def scrape_syllabus(request: SyllabusRequest):
 
     try:
         with sync_playwright() as p:
-            # ⚠️ Render（サーバー）上で動かすため、必ず headless=True にします
-            browser = p.chromium.launch(headless=True, slow_mo=800)
-            page = browser.new_page()
-            page.set_default_timeout(60000)
+            # 🚀 変更点1：slow_mo（わざと遅くする設定）を削除し、フルスピードで動かす
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+            
+            # 🚀 変更点2：超高速化の要！画像、CSS、フォントなどの無駄な通信をすべて遮断する
+            page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
 
-            print(f"\n[STEP 1] サイトにアクセス中...")
-            page.goto(root_url, wait_until="networkidle")
+            page.set_default_timeout(30000) # タイムアウトも短めに設定
+
+            print(f"\n[STEP 1] 爆速モードでアクセス中...")
+            # 🚀 変更点3：ネットワークが完全に静かになるまで待たず、HTMLが出た瞬間に次へ進む
+            page.goto(root_url, wait_until="domcontentloaded")
             
             # 1. 検索窓に入力
             search_box = page.wait_for_selector('input.slds-input', state="visible")
@@ -42,59 +47,44 @@ def scrape_syllabus(request: SyllabusRequest):
             search_btn.click(force=True)
 
             # 3. リンクスキャン
-            print("[STEP 4] 検索結果から授業を探しています...")
-            page.wait_for_timeout(3000)
-            page.mouse.wheel(0, 500)
-
+            print("[STEP 2] 検索結果をスキャン中...")
+            # 🚀 変更点4：無駄な3秒待機（wait_for_timeout）を消去し、結果リストが出るまで「賢く」待つ
+            page.wait_for_selector('a[href*="/syllabus/s/sfsites/c/"]', state="visible", timeout=10000)
+            
             target_link = None
             course_name_memory = "授業名取得失敗" 
             detail_url_memory = "URL取得失敗"
 
-            for i in range(10):
-                links = page.get_by_role("link").all()
-                for link in links:
-                    text = link.inner_text().strip()
-                    
-                    # 入力したキーワードが含まれるリンクを探す
-                    if request.query in text:
-                        target_link = link
-                        course_name_memory = text 
-                        
-                        # クリックする前に、リンクの裏に隠れたURL(href)を引っこ抜く
-                        raw_href = link.get_attribute("href")
-                        if raw_href:
-                            # 相対URLの場合はドメインをくっつけて完全なURLにする
-                            if raw_href.startswith("http"):
-                                detail_url_memory = raw_href
-                            else:
-                                detail_url_memory = f"https://syllabus.ritsumei.ac.jp{raw_href}"
-                        
-                        print(f"✅ ターゲット発見: {course_name_memory}")
-                        print(f"🔗 確保したURL: {detail_url_memory}")
-                        break
-                        
-                if target_link: break
-                page.mouse.wheel(0, 200)
-                page.wait_for_timeout(1000)
+            links = page.get_by_role("link").all()
+            for link in links:
+                text = link.inner_text().strip()
+                if request.query in text:
+                    target_link = link
+                    course_name_memory = text 
+                    raw_href = link.get_attribute("href")
+                    if raw_href:
+                        if raw_href.startswith("http"):
+                            detail_url_memory = raw_href
+                        else:
+                            detail_url_memory = f"https://syllabus.ritsumei.ac.jp{raw_href}"
+                    break
 
             if not target_link:
                 raise Exception("検索結果に該当する授業が見つかりませんでした。")
 
             # 4. 詳細ページへ移動
-            print("[STEP 5] 詳細ページへ移動中...")
+            print(f"[STEP 3] {course_name_memory} の詳細へ移動中...")
             target_link.scroll_into_view_if_needed()
             target_link.dispatch_event("click")
 
             # 5. 詳細データの抽出
-            print("[STEP 6] データを抽出しています...")
-            # 担当という文字が出るまで待機
-            page.wait_for_selector('td[data-label*="担当"]', state="visible", timeout=30000)
+            print("[STEP 4] データを抽出中...")
+            page.wait_for_selector('td[data-label*="担当"]', state="visible")
 
             def get_text_by_label(label_name):
                 try:
                     selector = f'td[data-label*="{label_name}"]'
                     element = page.locator(selector).first
-                    element.wait_for(state="visible", timeout=2000)
                     return element.inner_text().strip()
                 except:
                     return None
