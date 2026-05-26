@@ -1,77 +1,140 @@
-// script.js (全体コード)
+// ⚠️ 【重要】以下のURLを、ご自身のRenderの正しいURLに書き換えてください。
+// 例: 'https://manaba-xxxx.onrender.com' (末尾の / は不要です)
+const RENDER_API_URL = 'https://manaba.onrender.com';
 
-// ⚠️ 【重要】以下の 'https://xxxx.onrender.com' の部分を、
-// あなたのRenderの画面上部に表示されている「本物のURL」に書き換えてください。
-// ※ 末尾の / は無しにしてください（例: https://my-service.onrender.com）
-const RENDER_API_URL = 'https://xxxx.onrender.com';
+document.addEventListener('DOMContentLoaded', () => {
+    generateTimetableGrid();
+    loadCourses();
+});
 
-document.getElementById('search-btn').addEventListener('click', async () => {
-    const query = document.getElementById('search-query').value;
-    const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = '検索中...';
+// 1〜6限のマス目を自動で作る関数
+function generateTimetableGrid() {
+    const tbody = document.getElementById('timetableBody');
+    const days = ['月', '火', '水', '木', '金', '土'];
+    
+    for (let period = 1; period <= 6; period++) {
+        const tr = document.createElement('tr');
+        // 時限の数字セル
+        const tdPeriod = document.createElement('td');
+        tdPeriod.className = 'period-col';
+        tdPeriod.textContent = period;
+        tr.appendChild(tdPeriod);
 
-    if (!query) {
-        resultsDiv.innerHTML = 'キーワードを入力してください。';
-        return;
+        // 各曜日のセル
+        days.forEach(day => {
+            const td = document.createElement('td');
+            td.id = `cell-${day}-${period}`; // 例: cell-月-3
+            td.className = 'timetable-cell';
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
     }
+}
+
+async function searchAndAdd() {
+    const queryInput = document.getElementById('courseQuery');
+    const query = queryInput.value;
+    if (query === '') return;
+
+    const loadingMsg = document.getElementById('loadingMessage');
+    if (loadingMsg) {
+        loadingMsg.style.display = 'block';
+        loadingMsg.innerHTML = `⌛ 「${query}」を解析中...`;
+    }
+    queryInput.value = '';
 
     try {
-        // RenderのAPIを呼び出す
-        const response = await fetch(`${RENDER_API_URL}/scrape-syllabus?query=${encodeURIComponent(query)}`);
+        // 🌟 ココを修正！ Python側と同じ「POSTメソッド」で送信するようにしました
+        const response = await fetch(`${RENDER_API_URL}/scrape-syllabus`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query: query })
+        });
         
         if (!response.ok) {
             throw new Error(`サーバーエラー: ${response.status}`);
         }
+        
+        const result = await response.json();
+        if (loadingMsg) loadingMsg.style.display = 'none';
 
-        const data = await response.json();
-        resultsDiv.innerHTML = '';
-
-        if (data.length === 0) {
-            resultsDiv.innerHTML = '該当する授業が見つかりませんでした。';
-            return;
+        // Python側が配列を直接返す場合
+        if (Array.isArray(result) && result.length > 0) {
+            saveCourse(result[0]);
+            loadCourses(); 
+        // Python側が {status: "success", data: ...} を返す場合
+        } else if (result.status === "success") {
+            saveCourse(result.data);
+            loadCourses();
+        } else {
+            // messageが無い場合でもundefinedにならないよう汎用エラーを表示
+            alert("エラー: 授業が見つからなかったか、形式が異なります。詳細: " + (result.message || JSON.stringify(result)));
         }
-
-        // 検索結果のカードを生成
-        data.forEach(course => {
-            const card = document.createElement('div');
-            card.className = 'course-card';
-            
-            // データが正しく取得できているか、念のためフォールバック（||）を設定
-            const title = course.title || '名称不明の授業';
-            const teacher = course.teacher || '担当者不明';
-            const day = course.day || '未定';
-            const period = course.period || '未定';
-
-            card.innerHTML = `
-                <h4>${title}</h4>
-                <p>担当: ${teacher}</p>
-                <p>曜日・時限: ${day}${period ? period + '限' : ''}</p>
-                <button onclick="addCourseToTimetable('${title}', '${day}', '${period}')">時間割に追加</button>
-            `;
-            resultsDiv.appendChild(card);
-        });
-
     } catch (error) {
-        console.error('エラー詳細:', error);
-        resultsDiv.innerHTML = 'データの取得に失敗しました。Renderサーバーが起動中か確認してください。';
+        console.error('通信エラー:', error);
+        if (loadingMsg) loadingMsg.style.display = 'none';
+        alert("通信エラーが発生しました。Renderサーバーが起動しているか確認してください。");
     }
-});
+}
 
-// 時間割にセルを追加する関数
-function addCourseToTimetable(title, day, period) {
-    if (!day || !period || day === '未定' || period === '未定') {
-        alert('曜日または時限が特定できないため、時間割に自動配置できません。');
-        return;
+function saveCourse(courseData) {
+    let courses = JSON.parse(localStorage.getItem('myCourses')) || [];
+    courses.push(courseData);
+    localStorage.setItem('myCourses', JSON.stringify(courses));
+}
+
+function loadCourses() {
+    // 一旦すべてのマス目とリストを空にする
+    document.querySelectorAll('.timetable-cell').forEach(cell => cell.innerHTML = '');
+    document.getElementById('unassignedList').innerHTML = '';
+
+    let courses = JSON.parse(localStorage.getItem('myCourses')) || [];
+    courses.forEach(course => {
+        renderCourse(course);
+    });
+}
+
+function renderCourse(data) {
+    // カードのHTML（時間割に入るようにコンパクトに）
+    const card = document.createElement('div');
+    card.className = 'course-card';
+
+    const teacherHtml = (data.teacher && data.teacher !== "不明") ? `<div class="info">👤 ${data.teacher}</div>` : "";
+    const roomHtml = (data.room && data.room !== "不明") ? `<div class="info">📍 ${data.room}</div>` : "";
+
+    card.innerHTML = `
+        <button class="delete-btn" onclick="deleteCourse('${data.id}')">×</button>
+        <div class="course-title">${data.course}</div>
+        ${teacherHtml}
+        ${roomHtml}
+        <a href="${data.url}" target="_blank" class="syllabus-link">🔗 シラバス</a>
+    `;
+
+    // 「月3」などから曜日と時限を解析
+    const timeMatch = data.time_slot ? data.time_slot.match(/(月|火|水|木|金|土)\s*(\d)/) : null;
+
+    if (timeMatch) {
+        // 例：day="月", period="3"
+        const day = timeMatch[1];
+        const period = timeMatch[2];
+        const targetCell = document.getElementById(`cell-${day}-${period}`);
+        
+        if (targetCell) {
+            targetCell.appendChild(card);
+            return; // 成功したらここで終了
+        }
     }
 
-    // 例: "月", "1" -> "cell-月-1" のようなIDを持つHTML要素を探す
-    const cellId = `cell-${day}-${period}`;
-    const cell = document.getElementById(cellId);
+    // 解析失敗、または曜日不明の場合は「その他の授業」エリアへ
+    document.getElementById('unassignedList').appendChild(card);
+}
 
-    if (cell) {
-        cell.innerHTML = `<strong>${title}</strong>`;
-        alert(`${title} を時間割に追加しました！`);
-    } else {
-        alert('該当する時間割の枠（セル）が見つかりませんでした。HTMLのIDを確認してください。');
-    }
+function deleteCourse(id) {
+    if (!confirm("この授業を削除しますか？")) return;
+    let courses = JSON.parse(localStorage.getItem('myCourses')) || [];
+    courses = courses.filter(c => c.id !== id);
+    localStorage.setItem('myCourses', JSON.stringify(courses));
+    loadCourses();
 }

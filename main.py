@@ -5,7 +5,15 @@ from playwright.sync_api import sync_playwright
 import time
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# CORS設定（ローカルPCのブラウザからのアクセスを許可する設定）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False, # allow_origins="*" の場合は False にする必要があります
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class SyllabusRequest(BaseModel):
     query: str
@@ -16,8 +24,8 @@ def scrape_syllabus(request: SyllabusRequest):
 
     try:
         with sync_playwright() as p:
-            # ブラウザを表示して実行（安定したらheadless=Trueに変更可能です）
-            browser = p.chromium.launch(headless=False, slow_mo=800)
+            # ⚠️ Render（サーバー）上で動かすため、必ず headless=True にします
+            browser = p.chromium.launch(headless=True, slow_mo=800)
             page = browser.new_page()
             page.set_default_timeout(60000)
 
@@ -40,7 +48,7 @@ def scrape_syllabus(request: SyllabusRequest):
 
             target_link = None
             course_name_memory = "授業名取得失敗" 
-            detail_url_memory = "URL取得失敗" # 🌟 URLを暗記する変数を追加
+            detail_url_memory = "URL取得失敗"
 
             for i in range(10):
                 links = page.get_by_role("link").all()
@@ -52,10 +60,10 @@ def scrape_syllabus(request: SyllabusRequest):
                         target_link = link
                         course_name_memory = text 
                         
-                        # 🌟 超重要：クリックする前に、リンクの裏に隠れたURL(href)を引っこ抜く！
+                        # クリックする前に、リンクの裏に隠れたURL(href)を引っこ抜く
                         raw_href = link.get_attribute("href")
                         if raw_href:
-                            # 相対URL（/syllabus/s/...）の場合は、ドメインをくっつけて完全なURLにする
+                            # 相対URLの場合はドメインをくっつけて完全なURLにする
                             if raw_href.startswith("http"):
                                 detail_url_memory = raw_href
                             else:
@@ -107,7 +115,7 @@ def scrape_syllabus(request: SyllabusRequest):
                 "teacher": teacher_res,
                 "time_slot": time_res,
                 "room": room_res,
-                "url": detail_url_memory # 🌟 クリック前に暗記しておいた本物のURLを返す
+                "url": detail_url_memory 
             }
         }
 
