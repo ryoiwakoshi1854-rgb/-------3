@@ -27,7 +27,7 @@ def scrape_syllabus(request: SyllabusRequest):
             context = browser.new_context()
             page = context.new_page()
             
-            # 🎨 画像やデザインの読み込みをブロック（スピードアップ用）
+            # 画像やデザインの通信を遮断（スピードアップ）
             page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
 
             page.set_default_timeout(30000)
@@ -45,44 +45,42 @@ def scrape_syllabus(request: SyllabusRequest):
             search_btn = page.locator('button:has-text("検索")').first
             search_btn.click(force=True)
 
-            # 3. リンクスキャン
             print("[STEP 2] 検索結果をスキャン中...")
             
-            target_link = None
-            course_name_memory = "授業名取得失敗" 
+            target_text = None
             detail_url_memory = "URL取得失敗"
 
-            # 🌟 変更点：厳しい条件での待機をやめ、「目的のリンクが出るまで0.5秒おきに最大30回（15秒）探す」ループに変更
+            # 🌟 究極の回避策：ブラウザに直接JavaScriptを流し込み、見えないリンクでフリーズする現象を完全に無効化する
             for _ in range(30):
-                links = page.get_by_role("link").all()
-                for link in links:
-                    text = link.inner_text().strip()
-                    # もしリンクの中に検索キーワードが含まれていたら確保！
-                    if request.query in text:
-                        target_link = link
-                        course_name_memory = text 
-                        raw_href = link.get_attribute("href")
-                        if raw_href:
-                            if raw_href.startswith("http"):
-                                detail_url_memory = raw_href
-                            else:
-                                detail_url_memory = f"https://syllabus.ritsumei.ac.jp{raw_href}"
-                        break
-                
-                # 見つかったらループを抜け出して次のステップへ
-                if target_link:
+                found_link = page.evaluate('''(q) => {
+                    const links = Array.from(document.querySelectorAll('a'));
+                    for (let a of links) {
+                        const text = (a.innerText || a.textContent || "").trim();
+                        if (text.includes(q) && a.getAttribute('href')) {
+                            return { text: text, href: a.getAttribute('href') };
+                        }
+                    }
+                    return null;
+                }''', request.query)
+
+                if found_link:
+                    target_text = found_link['text']
+                    raw_href = found_link['href']
+                    if raw_href.startswith("http"):
+                        detail_url_memory = raw_href
+                    else:
+                        detail_url_memory = f"https://syllabus.ritsumei.ac.jp{raw_href}"
                     break
                 
-                # まだ見つからなければ、0.5秒だけ待ってからもう一度画面を探す
                 page.wait_for_timeout(500)
 
-            if not target_link:
+            if not target_text:
                 raise Exception("検索結果に該当する授業が見つかりませんでした。（15秒タイムアウト）")
 
             # 4. 詳細ページへ移動
-            print(f"[STEP 3] {course_name_memory} の詳細へ移動中...")
-            target_link.scroll_into_view_if_needed()
-            target_link.dispatch_event("click")
+            print(f"[STEP 3] {target_text} の詳細へ移動中...")
+            target_link = page.get_by_role("link", name=target_text).first
+            target_link.click(force=True) # 強制クリックでエラー回避
 
             # 5. 詳細データの抽出
             print("[STEP 4] データを抽出中...")
@@ -92,7 +90,9 @@ def scrape_syllabus(request: SyllabusRequest):
                 try:
                     selector = f'td[data-label*="{label_name}"]'
                     element = page.locator(selector).first
-                    return element.inner_text().strip()
+                    # 🌟 ここもフリーズ対策として text_content に変更
+                    text = element.text_content()
+                    return text.strip() if text else None
                 except:
                     return None
 
@@ -102,13 +102,13 @@ def scrape_syllabus(request: SyllabusRequest):
 
             browser.close()
 
-        print(f"🎉 取得成功: {course_name_memory}")
+        print(f"🎉 取得成功: {target_text}")
 
         return {
             "status": "success",
             "data": {
                 "id": str(int(time.time())),
-                "course": course_name_memory,
+                "course": target_text,
                 "teacher": teacher_res,
                 "time_slot": time_res,
                 "room": room_res,
