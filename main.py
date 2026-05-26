@@ -23,32 +23,31 @@ def scrape_syllabus(request: SyllabusRequest):
 
     try:
         with sync_playwright() as p:
-            # 🚀 変更点1：slow_mo（わざと遅くする設定）を削除し、フルスピードで動かす
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
             
-            # 🚀 変更点2：超高速化の要！画像、CSS、フォントなどの無駄な通信をすべて遮断する
+            # 画像やデザインなど、重いデータの通信はブロック（これはそのまま残します）
             page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
 
-            page.set_default_timeout(30000) # タイムアウトも短めに設定
+            page.set_default_timeout(30000)
 
-            print(f"\n[STEP 1] 爆速モードでアクセス中...")
-            # 🚀 変更点3：ネットワークが完全に静かになるまで待たず、HTMLが出た瞬間に次へ進む
-            page.goto(root_url, wait_until="domcontentloaded")
+            print(f"\n[STEP 1] アクセス中...")
+            # 🌟 変更点1：ここは安全を優先し、サイトが落ち着くまで待つように戻します
+            page.goto(root_url, wait_until="networkidle")
             
-            # 1. 検索窓に入力
-            search_box = page.wait_for_selector('input.slds-input', state="visible")
+            # 🌟 変更点2：「一瞬消える部品」にも対応できる Locator（ロケーター）という書き方に変更
+            search_box = page.locator('input.slds-input')
+            search_box.wait_for(state="visible")
             search_box.fill(request.query)
             page.keyboard.press("Enter")
 
             # 2. 検索実行
-            search_btn = page.get_by_role("button", name="検索").first
+            search_btn = page.locator('button:has-text("検索")').first
             search_btn.click(force=True)
 
             # 3. リンクスキャン
             print("[STEP 2] 検索結果をスキャン中...")
-            # 🚀 変更点4：無駄な3秒待機（wait_for_timeout）を消去し、結果リストが出るまで「賢く」待つ
             page.wait_for_selector('a[href*="/syllabus/s/sfsites/c/"]', state="visible", timeout=10000)
             
             target_link = None
