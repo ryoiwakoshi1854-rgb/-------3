@@ -39,18 +39,17 @@ def scrape_syllabus(request: SyllabusRequest):
             search_box = page.locator('input.slds-input')
             search_box.wait_for(state="visible")
             search_box.fill(request.query)
-            page.keyboard.press("Enter")
 
             # 2. 検索実行
-            search_btn = page.locator('button:has-text("検索")').first
-            search_btn.click(force=True)
+            # 🌟 修正ポイント：隠れボタンを無視し、「見えている」検索ボタンだけを確実にJSでクリック
+            search_btn = page.locator('button.slds-button_brand:has-text("検索") >> visible=true').first
+            search_btn.evaluate("node => node.click()")
 
             print("[STEP 2] 検索結果をスキャン中...")
             
             target_text = None
             detail_url_memory = "URL取得失敗"
 
-            # 🌟 究極の回避策：ブラウザに直接JavaScriptを流し込み、見えないリンクでフリーズする現象を完全に無効化する
             for _ in range(30):
                 found_link = page.evaluate('''(q) => {
                     const links = Array.from(document.querySelectorAll('a'));
@@ -79,8 +78,9 @@ def scrape_syllabus(request: SyllabusRequest):
 
             # 4. 詳細ページへ移動
             print(f"[STEP 3] {target_text} の詳細へ移動中...")
-            target_link = page.get_by_role("link", name=target_text).first
-            target_link.click(force=True) # 強制クリックでエラー回避
+            # 🌟 修正ポイント：リンクのクリックもフリーズ回避のためJS強制クリックに変更
+            target_link = page.locator(f'a:has-text("{target_text}") >> visible=true').first
+            target_link.evaluate("node => node.click()")
 
             # 5. 詳細データの抽出
             print("[STEP 4] データを抽出中...")
@@ -90,7 +90,6 @@ def scrape_syllabus(request: SyllabusRequest):
                 try:
                     selector = f'td[data-label*="{label_name}"]'
                     element = page.locator(selector).first
-                    # 🌟 ここもフリーズ対策として text_content に変更
                     text = element.text_content()
                     return text.strip() if text else None
                 except:
